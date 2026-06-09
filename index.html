@@ -12,7 +12,6 @@
         h1 { font-size: 28px; font-weight: 800; text-align: center; margin-bottom: 8px; background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         p.subtitle { text-align: center; color: #94a3b8; font-size: 14px; margin-bottom: 32px; }
         
-        /* Input & Buttons */
         .input-box { display: flex; gap: 8px; background: #0f172a; padding: 8px; border-radius: 16px; border: 1px solid #334155; transition: all 0.3s ease; align-items: center; }
         .input-box:focus-within { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
         input { flex: 1; background: transparent; border: none; outline: none; color: #f8fafc; font-size: 15px; padding: 12px; width: 100%; }
@@ -24,11 +23,9 @@
         .btn-search { background: #6366f1; }
         .btn-search:hover { background: #4f46e5; }
 
-        /* Progress Bar */
         .progress-container { display: none; width: 100%; height: 4px; background: #334155; border-radius: 4px; margin-top: 24px; overflow: hidden; }
         .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #38bdf8, #818cf8); border-radius: 4px; transition: width 0.3s ease; }
 
-        /* Results */
         .result-container { display: none; margin-top: 32px; animation: fadeIn 0.5s ease forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
@@ -90,7 +87,6 @@
     </div>
 
     <script>
-        // Clipboard functionality for the paste button
         async function pasteFromClipboard() {
             try {
                 const text = await navigator.clipboard.readText();
@@ -102,7 +98,6 @@
 
         let progressInterval;
 
-        // Simulate realtime progress bar
         function startProgress() {
             const loader = document.getElementById('mainLoader');
             const bar = document.getElementById('progressBar');
@@ -152,12 +147,10 @@
                 let result;
                 
                 try {
-                    // Stage 1: Direct API fetch
                     const directApiUrl = `https://api.danzy.web.id/api/download/tiktok?url=${encodeURIComponent(url)}`;
                     const directResponse = await fetch(directApiUrl);
                     result = await directResponse.json();
                 } catch (fallbackError) {
-                    // Stage 2: Fallback to internal Vercel route
                     const proxyResponse = await fetch(`/api/fetch?url=${encodeURIComponent(url)}`);
                     result = await proxyResponse.json();
                 }
@@ -203,7 +196,8 @@
             } else if (data.type === 'photo') {
                 template += `<div class="photo-grid">`;
                 
-                const filteredSlides = Array.from(new Map((data.slides || []).map(item => [item.index, item])).values());
+                const hdSlides = (data.slides || []).filter(item => item.url.includes('.jpeg'));
+                const filteredSlides = Array.from(new Map(hdSlides.map(item => [item.index, item])).values());
 
                 filteredSlides.forEach(slide => {
                     template += `
@@ -236,7 +230,7 @@
 
             const textBackup = element.innerText;
             element.disabled = true;
-            element.innerHTML = `<span class="btn-spinner"></span>`; // Removed processing text
+            element.innerHTML = `<span class="btn-spinner"></span>`;
 
             try {
                 const response = await fetch(`/api/download?url=${encodeURIComponent(target)}&type=${format}`);
