@@ -84,11 +84,13 @@
                 const response = await fetch(`/api/fetch?url=${encodeURIComponent(url)}`);
                 const result = await response.json();
 
-                if (!result.status) throw new Error();
+                if (!result.status) {
+                    throw new Error(result.message || 'Gagal memproses tautan');
+                }
 
                 displayData(result.data);
             } catch (error) {
-                alert('Gagal memproses tautan atau format tidak valid');
+                alert(error.message || 'Sistem gagal membaca tautan tersebut');
             } finally {
                 loader.style.display = 'none';
             }
