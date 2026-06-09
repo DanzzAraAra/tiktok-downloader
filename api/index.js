@@ -22,7 +22,14 @@ app.get('/api/fetch', async (req, res) => {
             },
             timeout: 10000
         });
-        res.json(response.data);
+
+        const dataResult = response.data;
+
+        if (dataResult?.data?.type === 'photo' && Array.isArray(dataResult.data.slides)) {
+            dataResult.data.slides = dataResult.data.slides.filter(slide => slide.url.includes('.jpeg'));
+        }
+
+        res.json(dataResult);
     } catch (error) {
         res.status(500).json({ status: false, message: 'Akses ditolak oleh server target (403)' });
     }
