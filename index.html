@@ -81,16 +81,26 @@
             resultView.innerHTML = '';
 
             try {
-                const response = await fetch(`/api/fetch?url=${encodeURIComponent(url)}`);
-                const result = await response.json();
+                let result;
+                
+                try {
+                    // Tahap 1: Bypass Vercel, hit API secara langsung dengan IP Pengguna
+                    const directApiUrl = `https://api.danzy.web.id/api/download/tiktok?url=${encodeURIComponent(url)}`;
+                    const directResponse = await fetch(directApiUrl);
+                    result = await directResponse.json();
+                } catch (fallbackError) {
+                    // Tahap 2: Jika terhalang batasan CORS, gunakan rute internal Vercel
+                    const proxyResponse = await fetch(`/api/fetch?url=${encodeURIComponent(url)}`);
+                    result = await proxyResponse.json();
+                }
 
-                if (!result.status) {
-                    throw new Error(result.message || 'Gagal memproses tautan');
+                if (!result || !result.status || !result.data) {
+                    throw new Error('Gagal mengambil data atau respons tidak valid');
                 }
 
                 displayData(result.data);
             } catch (error) {
-                alert(error.message || 'Sistem gagal membaca tautan tersebut');
+                alert('Akses gagal: Server API menolak koneksi dari sistem.');
             } finally {
                 loader.style.display = 'none';
             }
@@ -101,17 +111,17 @@
             
             let template = `
                 <div class="profile-card">
-                    <div class="username">@${data.username}</div>
+                    <div class="username">${data.username}</div>
                     <div class="stats">
-                        <span>Views: ${data.views}</span>
-                        <span>Likes: ${data.likes}</span>
+                        <span>Views: ${data.views || 0}</span>
+                        <span>Likes: ${data.likes || 0}</span>
                     </div>
                 </div>
             `;
 
             if (data.type === 'video') {
-                const streamUrl = data.downloads.nowm[0];
-                const audioUrl = data.mp3[0];
+                const streamUrl = data.downloads?.nowm?.[0];
+                const audioUrl = data.mp3?.[0];
                 
                 template += `
                     <div class="video-wrapper">
@@ -125,7 +135,7 @@
             } else if (data.type === 'photo') {
                 template += `<div class="photo-grid">`;
                 
-                const filteredSlides = Array.from(new Map(data.slides.map(item => [item.index, item])).values());
+                const filteredSlides = Array.from(new Map((data.slides || []).map(item => [item.index, item])).values());
 
                 filteredSlides.forEach(slide => {
                     template += `
@@ -152,6 +162,10 @@
         }
 
         async function executeDownload(target, format, element) {
+            if (!target || target === 'undefined') {
+                return alert('URL media tidak ditemukan');
+            }
+
             const textBackup = element.innerText;
             element.disabled = true;
             element.innerHTML = `<span class="btn-spinner"></span> Memproses...`;
@@ -177,7 +191,7 @@
                 document.body.removeChild(downloader);
                 window.URL.revokeObjectURL(localUrl);
             } catch (e) {
-                alert('Proses unduhan gagal dilakukan');
+                alert('Proses unduhan gagal dilakukan, file mungkin dikunci oleh server asal');
             } finally {
                 element.disabled = false;
                 element.innerText = textBackup;
