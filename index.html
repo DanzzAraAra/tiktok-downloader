@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Downloader Premium</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        body { background-color: #0f172a; color: #f8fafc; min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
+        .container { width: 100%; max-width: 680px; background: #1e293b; padding: 40px; border-radius: 24px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2); border: 1px solid #334155; }
+        h1 { font-size: 28px; font-weight: 800; text-align: center; margin-bottom: 8px; background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        p.subtitle { text-align: center; color: #94a3b8; font-size: 14px; margin-bottom: 32px; }
+        .input-box { display: flex; gap: 12px; background: #0f172a; padding: 8px; border-radius: 16px; border: 1px solid #334155; transition: all 0.3s ease; }
+        .input-box:focus-within { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
+        input { flex: 1; background: transparent; border: none; outline: none; color: #f8fafc; font-size: 16px; padding: 12px; }
+        input::placeholder { color: #64748b; }
+        button.btn-search { background: #6366f1; color: white; border: none; padding: 12px 28px; border-radius: 12px; font-weight: 600; font-size: 15px; cursor: pointer; transition: background 0.2s ease; }
+        button.btn-search:hover { background: #4f46e5; }
+        
+        .loading-container { display: none; margin: 40px 0; text-align: center; }
+        .spinner { width: 40px; height: 40px; border: 4px solid rgba(255, 255, 255, 0.1); border-left-color: #6366f1; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loading-text { color: #94a3b8; font-size: 14px; font-weight: 500; }
+
+        .result-container { display: none; margin-top: 40px; animation: fadeIn 0.5s ease forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .profile-card { background: #0f172a; padding: 20px; border-radius: 16px; border: 1px solid #334155; margin-bottom: 24px; text-align: center; }
+        .username { font-weight: 700; font-size: 18px; color: #f8fafc; margin-bottom: 4px; }
+        .stats { font-size: 13px; color: #64748b; display: flex; justify-content: center; gap: 16px; }
+        
+        .video-wrapper { text-align: center; margin-bottom: 24px; }
+        video { width: 100%; max-height: 360px; border-radius: 16px; background: #000; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        
+        .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .photo-card { background: #0f172a; border-radius: 16px; border: 1px solid #334155; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+        .photo-card img { width: 100%; height: 160px; object-fit: cover; border-radius: 10px; background: #1e293b; }
+        
+        .btn-download { display: inline-flex; align-items: center; justify-content: center; width: 100%; padding: 12px; background: #334155; color: white; border: none; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s ease; text-align: center; }
+        .btn-download:hover { background: #475569; }
+        .btn-download:disabled { background: #1e293b; color: #64748b; cursor: not-allowed; }
+        
+        .action-group { display: flex; flex-direction: column; gap: 12px; }
+        .btn-primary-dl { background: #0284c7; }
+        .btn-primary-dl:hover { background: #0369a1; }
+        .btn-secondary-dl { background: #059669; }
+        .btn-secondary-dl:hover { background: #047857; }
+
+        .btn-spinner { width: 16px; height: 16px; border: 2px solid rgba(255, 255, 255, 0.2); border-left-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; display: inline-block; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>TikTok Downloader</h1>
+        <p class="subtitle">Unduh Video, Audio, dan Foto TikTok Secara Instan</p>
+
+        <div class="input-box">
+            <input type="text" id="targetUrl" placeholder="Tempel tautan TikTok di sini...">
+            <button class="btn-search" onclick="processUrl()">Cari</button>
+        </div>
+
+        <div class="loading-container" id="mainLoader">
+            <div class="spinner"></div>
+            <div class="loading-text">Sedang mengambil data dari sistem...</div>
+        </div>
+
+        <div class="result-container" id="resultView"></div>
+    </div>
+
+    <script>
+        async function processUrl() {
+            const url = document.getElementById('targetUrl').value;
+            const loader = document.getElementById('mainLoader');
+            const resultView = document.getElementById('resultView');
+
+            if (!url) return alert('Masukkan tautan terlebih dahulu');
+
+            loader.style.display = 'block';
+            resultView.style.display = 'none';
+            resultView.innerHTML = '';
+
+            try {
+                const response = await fetch(`/api/fetch?url=${encodeURIComponent(url)}`);
+                const result = await response.json();
+
+                if (!result.status) throw new Error();
+
+                displayData(result.data);
+            } catch (error) {
+                alert('Gagal memproses tautan atau format tidak valid');
+            } finally {
+                loader.style.display = 'none';
+            }
+        }
+
+        function displayData(data) {
+            const resultView = document.getElementById('resultView');
+            
+            let template = `
+                <div class="profile-card">
+                    <div class="username">@${data.username}</div>
+                    <div class="stats">
+                        <span>Views: ${data.views}</span>
+                        <span>Likes: ${data.likes}</span>
+                    </div>
+                </div>
+            `;
+
+            if (data.type === 'video') {
+                const streamUrl = data.downloads.nowm[0];
+                const audioUrl = data.mp3[0];
+                
+                template += `
+                    <div class="video-wrapper">
+                        <video src="${streamUrl}" controls preload="metadata"></video>
+                    </div>
+                    <div class="action-group">
+                        <button class="btn-download btn-primary-dl" onclick="executeDownload('${streamUrl}', 'video', this)">Download Video</button>
+                        <button class="btn-download btn-secondary-dl" onclick="executeDownload('${audioUrl}', 'mp3', this)">Download MP3</button>
+                    </div>
+                `;
+            } else if (data.type === 'photo') {
+                template += `<div class="photo-grid">`;
+                
+                const filteredSlides = Array.from(new Map(data.slides.map(item => [item.index, item])).values());
+
+                filteredSlides.forEach(slide => {
+                    template += `
+                        <div class="photo-card">
+                            <img src="${slide.url}" alt="Preview">
+                            <button class="btn-download" onclick="executeDownload('${slide.url}', 'photo', this)">Download</button>
+                        </div>
+                    `;
+                });
+
+                template += `</div>`;
+
+                if (data.mp3 && data.mp3.length > 0) {
+                    template += `
+                        <div class="action-group">
+                            <button class="btn-download btn-secondary-dl" onclick="executeDownload('${data.mp3[0]}', 'mp3', this)">Download MP3 Background</button>
+                        </div>
+                    `;
+                }
+            }
+
+            resultView.innerHTML = template;
+            resultView.style.display = 'block';
+        }
+
+        async function executeDownload(target, format, element) {
+            const textBackup = element.innerText;
+            element.disabled = true;
+            element.innerHTML = `<span class="btn-spinner"></span> Memproses...`;
+
+            try {
+                const response = await fetch(`/api/download?url=${encodeURIComponent(target)}&type=${format}`);
+                if (!response.ok) throw new Error();
+                
+                const dataBlob = await response.blob();
+                const localUrl = window.URL.createObjectURL(dataBlob);
+                
+                const downloader = document.createElement('a');
+                downloader.href = localUrl;
+                
+                let fileExtension = '.mp4';
+                if (format === 'mp3') fileExtension = '.mp3';
+                if (format === 'photo') fileExtension = '.jpeg';
+                
+                downloader.download = `tiktok_media_${Date.now()}${fileExtension}`;
+                document.body.appendChild(downloader);
+                downloader.click();
+                
+                document.body.removeChild(downloader);
+                window.URL.revokeObjectURL(localUrl);
+            } catch (e) {
+                alert('Proses unduhan gagal dilakukan');
+            } finally {
+                element.disabled = false;
+                element.innerText = textBackup;
+            }
+        }
+    </script>
+</body>
+</html>
