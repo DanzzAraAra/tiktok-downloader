@@ -1,40 +1,158 @@
 const express = require('express');
 const axios = require('axios');
+const cheerio = require('cheerio');
+const { CookieJar } = require('tough-cookie');
+const { wrapper } = require('axios-cookiejar-support');
+
 const app = express();
 
-app.get('/api/fetch', async (req, res) => {
-    try {
-        const url = req.query.url;
-        if (!url) return res.status(400).json({ status: false, message: 'URL kosong' });
-
-        const response = await axios.get(`https://api.danzy.web.id/api/download/tiktok?url=${encodeURIComponent(url)}`, {
+class SaveTtClient {
+    constructor() {
+        this.jar = new CookieJar();
+        this.client = wrapper(axios.create({
+            baseURL: "https://savett.cc",
+            jar: this.jar,
+            withCredentials: true,
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Referer': 'https://google.com/',
-                'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-                'Sec-Ch-Ua-Mobile': '?0',
-                'Sec-Ch-Ua-Platform': '"Windows"',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'cross-site'
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Origin': 'https://savett.cc',
+                'Referer': 'https://savett.cc/en1/download',
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36'
             },
-            timeout: 10000
+            timeout: 30000,
+        }));
+    }
+
+    async getCsrfToken() {
+        const { data } = await this.client.get('/en1/download');
+        const match = data.match(/name="csrf_token" value="([^"]+)"/);
+        
+        if (!match) throw new Error("Gagal mengambil CSRF token dari SaveTt.");
+        return match[1];
+    }
+
+    async downloadHtml(url, csrf) {
+        const payload = `csrf_token=${encodeURIComponent(csrf)}&url=${encodeURIComponent(url)}`;
+        const { data } = await this.client.post('/en1/download', payload);
+        return data;
+    }
+
+    parseHtml(html) {
+        const $ = cheerio.load(html);
+
+        const stats = [];
+        $('#video-info .my-1 span').each((_, el) => {
+            stats.push($(el).text().trim());
         });
 
-        const dataResult = response.data;
+        const data = {
+            username: $('#video-info h3').first().text().trim() || null,
+            views: stats[0] || null,
+            likes: stats[1] || null,
+            bookmarks: stats[2] || null,
+            comments: stats[3] || null,
+            shares: stats[4] || null,
+            duration: $('#video-info p.text-muted')
+                .first()
+                .text()
+                .replace(/Duration:/i, '')
+                .trim() || null,
+            type: null,
+            downloads: {
+                nowm: [],
+                wm: []
+            },
+            mp3: [],
+            slides: []
+        };
 
-        if (dataResult?.data?.type === 'photo' && Array.isArray(dataResult.data.slides)) {
-            dataResult.data.slides = dataResult.data.slides.filter(slide => slide.url.includes('.jpeg'));
+        const slides = $('.carousel-item[data-data]');
+
+        if (slides.length) {
+            data.type = 'photo';
+
+            slides.each((_, el) => {
+                try {
+                    const rawData = $(el).attr('data-data');
+                    if (!rawData) return;
+                    
+                    const json = JSON.parse(rawData.replace(/&quot;/g, '"'));
+
+                    if (Array.isArray(json.URL)) {
+                        json.URL.forEach((url) => {
+                            data.slides.push({
+                                index: data.slides.length + 1,
+                                url
+                            });
+                        });
+                    }
+                } catch (e) { }
+            });
+
+            return data;
         }
 
-        res.json(dataResult);
+        data.type = 'video';
+
+        $('#formatselect option').each((_, el) => {
+            const label = $(el).text().toLowerCase();
+            const raw = $(el).attr('value');
+            if (!raw) return;
+
+            try {
+                const json = JSON.parse(raw.replace(/&quot;/g, '"'));
+                if (!json.URL) return;
+
+                if (label.includes('mp4') && !label.includes('watermark')) {
+                    data.downloads.nowm.push(...json.URL);
+                }
+
+                if (label.includes('watermark')) {
+                    data.downloads.wm.push(...json.URL);
+                }
+
+                if (label.includes('mp3')) {
+                    data.mp3.push(...json.URL);
+                }
+            } catch (e) { }
+        });
+
+        return data;
+    }
+
+    async process(url) {
+        try {
+            const csrf = await this.getCsrfToken();
+            const html = await this.downloadHtml(url, csrf);
+            return this.parseHtml(html);
+        } catch (e) {
+            throw new Error(e.message || "Gagal memproses URL");
+        }
+    }
+}
+
+
+// Endpoint Fetch
+app.get('/api/fetch', async (req, res) => {
+    const url = req.query.url;
+    if (!url) return res.status(400).json({ status: false, message: 'URL kosong' });
+
+    try {
+        const client = new SaveTtClient();
+        const result = await client.process(url);
+        
+        if (result.type === 'photo' && Array.isArray(result.slides)) {
+            result.slides = result.slides.filter(slide => slide.url.includes('.jpeg') || slide.url.includes('.webp')); 
+        }
+
+        res.json({ status: true, data: result });
     } catch (error) {
-        res.status(500).json({ status: false, message: 'Akses ditolak oleh server target (403)' });
+        res.status(500).json({ status: false, message: error.message });
     }
 });
 
+// Endpoint Download
 app.get('/api/download', async (req, res) => {
     const fileUrl = req.query.url;
     const type = req.query.type || 'file';
@@ -47,7 +165,7 @@ app.get('/api/download', async (req, res) => {
             responseType: 'stream',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                'Referer': 'https://www.tiktok.com/'
+                'Referer': 'https://www.tiktok.com/' // Kamu bisa ubah referer ke savett.cc jika download diblokir
             }
         });
         
